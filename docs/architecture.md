@@ -12,6 +12,7 @@ flowchart LR
     Engine["Pure game engine\nlib/game"]
     Agents["Agent orchestration\nlib/agents"]
     Codex["Installed Codex app-server\nephemeral turns"]
+    OpenAI["OpenAI Responses API\nper-game key"]
     Store["In-memory rooms\nserver-only cards"]
 
     UI -->|"cookie + validated actions"| API
@@ -20,6 +21,8 @@ flowchart LR
     API -->|"phase-scoped context"| Agents
     Agents -->|"dynamic tools"| Codex
     Codex -->|"validated tool calls"| Agents
+    Agents -->|"function tools"| OpenAI
+    OpenAI -->|"validated tool calls"| Agents
     Agents -->|"legal decisions"| API
     API -->|"viewer-redacted snapshot"| UI
 ```
@@ -30,8 +33,9 @@ flowchart LR
 | --- | --- | --- |
 | `lib/game` | Deal cards, order night turns, validate and apply actions, arbitrate speech, tally votes, resolve winners, project safe views | Call models, read the clock, access files, or use browser APIs |
 | `lib/agents` | Build phase-specific prompts and dynamic tools, validate exact tool payloads, retry malformed model decisions | Mutate game state or decide what information an agent may receive |
-| `server/game-service.ts` | Own rooms and secrets, serialize room operations, assemble per-agent context, invoke Codex or rehearsal fallbacks, return viewer snapshots | Return raw `GameState` to the browser |
+| `server/game-service.ts` | Own rooms and secrets, serialize room operations, assemble per-agent context, invoke Codex/OpenAI or rehearsal fallbacks, return viewer snapshots | Return raw `GameState` to the browser |
 | `server/codex` | Discover an installed runtime, manage isolated sign-in, speak JSONL app-server protocol, service registered dynamic tools | Bundle Codex, provide arbitrary tools, or expose credentials to the UI |
+| `server/openai` | Resolve an in-memory or environment API key and call the Responses API with the same exact game tools | Persist, log, return, or place API keys in model inputs |
 | `app` | Render phases, collect human actions, translate typing and hover into conversational signals, play local effects | Authoritatively apply rules or hold other players' secrets |
 
 All game values are plain serializable data. Each engine mutation is a pure
@@ -90,10 +94,10 @@ For every agent decision, the authority service:
    out-of-game voice profile, starting role, step-scoped private night
    experience, and exact legal actions for that participant. The profile shapes
    conversational style but grants no game knowledge.
-2. Creates a fresh ephemeral Codex thread with only the dynamic tool required
+2. Creates a fresh provider turn with only the dynamic/function tool required
    for that decision.
-3. Receives a JSONL `item/tool/call` request, verifies that it belongs to the
-   active thread and turn, and sends it through the exact-schema tool registry.
+3. Receives either a Codex JSONL `item/tool/call` request or a Responses API
+   `function_call` item and sends it through the exact-schema tool registry.
 4. Finishes the provider request immediately after that one tool validates,
    avoiding an extra model pass over a tool response the game does not use.
 5. Maps the validated decision into a domain action and asks the pure engine to
@@ -202,6 +206,22 @@ reasoning.
 Codex account data proves model entitlement only. It is not a game player
 account and is not included in agent prompts.
 
+### OpenAI API authorization
+
+The lobby can choose OpenAI API mode instead of Codex. A key entered in setup is
+sent over the loopback-only HTTP boundary and takes precedence over the local
+service's `OPENAI_API_KEY`. The room constructs an official OpenAI SDK client
+with retries disabled so the game's bounded retry policy stays authoritative.
+Each decision uses the Responses API with the chosen GPT-5.6 model and reasoning
+effort, one required function tool, parallel calls disabled, and `store: false`.
+No hosted tools or web search are enabled.
+
+The browser clears the key field after room creation. The service never writes
+a setup key to disk, includes it in model input or metadata, returns it in a
+snapshot, or emits it in logs. It remains reachable only through the in-memory
+room runtime until that room is removed or the service exits. An exported
+`OPENAI_API_KEY` follows normal process-environment lifetime instead.
+
 ### Human browser session
 
 The game service creates a random UUID and stores it in an `HttpOnly`,
@@ -254,6 +274,7 @@ instructions, and they cannot expand the registered tool surface.
 | `POST /api/auth/login` | Start browser or device-code login |
 | `GET /api/auth/login/:loginId` | Poll login completion |
 | `POST /api/auth/logout` | Sign the isolated Codex account out |
+| `GET /api/openai/status` | Report whether the local service has `OPENAI_API_KEY` without returning it |
 | `POST /api/games` | Create and deal a session-owned room |
 | `GET /api/games/:gameId` | Read a viewer-redacted snapshot |
 | `POST /api/games/:gameId/night/advance` | Resolve the current public role step and advance the ceremony |
@@ -295,10 +316,10 @@ can outlive a room but cannot recover it. There is no remote matchmaking or
 database persistence.
 
 The web surface retains vinext/Sites-compatible build infrastructure, but the
-Node loopback authority and in-memory room store are intentionally local. A
-public deployment would need a durable server design and the multiplayer
-security work above; deploying only the static/web half would not produce a
-working game.
+Node loopback authority, API-key boundary, and in-memory room store are
+intentionally local. A public deployment would need a durable server design,
+server-side secret storage, and the multiplayer security work above; deploying
+only the static/web half would not produce a working game.
 
 ## Provenance record
 

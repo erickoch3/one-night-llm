@@ -21,6 +21,11 @@ export interface CodexLoginChallenge {
   userCode?: string;
 }
 
+export interface OpenAIApiStatus {
+  configured: boolean;
+  message: string;
+}
+
 const configuredApiBase =
   process.env.NEXT_PUBLIC_GAME_API_URL?.replace(/\/$/, "") || null;
 
@@ -75,6 +80,7 @@ export const gameApi = {
       | { state: "failed"; message: string }
     >(`/api/auth/login/${encodeURIComponent(loginId)}`),
   logout: () => post<{ ok: true }>("/api/auth/logout"),
+  openaiStatus: () => request<OpenAIApiStatus>("/api/openai/status"),
   createGame: (value: CreateGameRequest) =>
     post<GameSnapshot>("/api/games", value),
   getGame: (gameId: string) =>

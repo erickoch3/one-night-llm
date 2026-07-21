@@ -10,6 +10,7 @@ import {
   Crown,
   ExternalLink,
   Eye,
+  KeyRound,
   LoaderCircle,
   MessageCircle,
   Moon,
@@ -48,6 +49,7 @@ import {
   gameApi,
   type CodexAuthStatus,
   type CodexLoginChallenge,
+  type OpenAIApiStatus,
 } from "@/lib/client/api";
 import type {
   GameMode,
@@ -117,6 +119,8 @@ export function GameApp() {
   const [screen, setScreen] = useState<AppScreen>("landing");
   const [auth, setAuth] = useState<CodexAuthStatus | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [openaiStatus, setOpenAIStatus] = useState<OpenAIApiStatus | null>(null);
+  const [openaiStatusLoading, setOpenAIStatusLoading] = useState(true);
   const [loginChallenge, setLoginChallenge] =
     useState<CodexLoginChallenge | null>(null);
   const [loginPending, setLoginPending] = useState(false);
@@ -124,6 +128,7 @@ export function GameApp() {
   const [agentCount, setAgentCount] = useState(4);
   const [rolePack, setRolePack] = useState<RolePack>("classic");
   const [mode, setMode] = useState<GameMode>("codex");
+  const [openaiApiKey, setOpenAIApiKey] = useState("");
   const [agentModel, setAgentModel] = useState<AgentModel>(DEFAULT_AGENT_MODEL);
   const [agentReasoningEffort, setAgentReasoningEffort] =
     useState<AgentReasoningEffort>(DEFAULT_AGENT_REASONING_EFFORT);
@@ -168,6 +173,32 @@ export function GameApp() {
       })
       .finally(() => {
         if (active) setAuthLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    gameApi
+      .openaiStatus()
+      .then((status) => {
+        if (active) setOpenAIStatus(status);
+      })
+      .catch((reason) => {
+        if (active) {
+          setOpenAIStatus({
+            configured: false,
+            message:
+              reason instanceof Error
+                ? reason.message
+                : "OpenAI API setup is unavailable.",
+          });
+        }
+      })
+      .finally(() => {
+        if (active) setOpenAIStatusLoading(false);
       });
     return () => {
       active = false;
@@ -327,6 +358,9 @@ export function GameApp() {
         rolePack,
         agentModel,
         agentReasoningEffort,
+        ...(mode === "openai" && openaiApiKey.trim()
+          ? { openaiApiKey: openaiApiKey.trim() }
+          : {}),
       });
       if (generation !== actionGenerationRef.current) {
         await gameApi.leave(next.gameId).catch(() => undefined);
@@ -337,6 +371,7 @@ export function GameApp() {
       setRoleOverlay(true);
       setRoleFlipped(false);
       setMessage("");
+      setOpenAIApiKey("");
       setVoteTargetId(null);
       previousPhaseRef.current = next.phase;
       gameAudio.play("nightFall");
@@ -399,8 +434,12 @@ export function GameApp() {
 
       <GlobalBar
         screen={screen}
+        mode={game?.mode ?? mode}
         auth={auth}
         authLoading={authLoading}
+        openaiReady={Boolean(
+          game?.mode === "openai" || openaiApiKey.trim() || openaiStatus?.configured,
+        )}
         muted={audio.muted}
         onToggleSound={() => gameAudio.toggleMuted()}
         onBack={screen === "game" ? leaveGame : returnToLanding}
@@ -426,6 +465,10 @@ export function GameApp() {
           onRolePack={setRolePack}
           mode={mode}
           onMode={setMode}
+          openaiApiKey={openaiApiKey}
+          onOpenAIApiKey={setOpenAIApiKey}
+          openaiStatus={openaiStatus}
+          openaiStatusLoading={openaiStatusLoading}
           agentModel={agentModel}
           onAgentModel={setAgentModel}
           agentReasoningEffort={agentReasoningEffort}
@@ -530,19 +573,38 @@ export function GameApp() {
 
 function GlobalBar({
   screen,
+  mode,
   auth,
   authLoading,
+  openaiReady,
   muted,
   onToggleSound,
   onBack,
 }: {
   screen: AppScreen;
+  mode: GameMode;
   auth: CodexAuthStatus | null;
   authLoading: boolean;
+  openaiReady: boolean;
   muted: boolean;
   onToggleSound: () => void;
   onBack: () => void;
 }) {
+  const connected =
+    (mode === "codex" && Boolean(auth?.signedIn)) ||
+    (mode === "openai" && openaiReady);
+  const connectionLabel =
+    mode === "openai"
+      ? openaiReady
+        ? "OpenAI ready"
+        : "API key needed"
+      : mode === "rehearsal"
+        ? "Local village"
+        : authLoading
+          ? "Finding Codex"
+          : auth?.signedIn
+            ? "Codex awake"
+            : "Local village";
   return (
     <header className="global-bar">
       <button
@@ -556,15 +618,11 @@ function GlobalBar({
       </button>
       <div className="global-actions">
         <span
-          className={`connection-pill ${auth?.signedIn ? "is-connected" : ""}`}
-          title={auth?.message}
+          className={`connection-pill ${connected ? "is-connected" : ""}`}
+          title={mode === "codex" ? auth?.message : connectionLabel}
         >
           <i />
-          {authLoading
-            ? "Finding Codex"
-            : auth?.signedIn
-              ? "Codex awake"
-              : "Local village"}
+          {connectionLabel}
         </span>
         <button
           className="icon-button"
@@ -621,7 +679,7 @@ function Landing({ onEnter, onRules }: { onEnter: () => void; onRules: () => voi
           <div><strong>Choose together</strong><small>One vote decides the village.</small></div>
         </article>
       </div>
-      <p className="landing-footnote">Local-first · Powered by your Codex login · No API key</p>
+      <p className="landing-footnote">Local-first · Codex login, OpenAI API key, or offline rehearsal</p>
     </section>
   );
 }
@@ -635,6 +693,10 @@ function Lobby({
   onRolePack,
   mode,
   onMode,
+  openaiApiKey,
+  onOpenAIApiKey,
+  openaiStatus,
+  openaiStatusLoading,
   agentModel,
   onAgentModel,
   agentReasoningEffort,
@@ -654,6 +716,10 @@ function Lobby({
   onRolePack: (value: RolePack) => void;
   mode: GameMode;
   onMode: (value: GameMode) => void;
+  openaiApiKey: string;
+  onOpenAIApiKey: (value: string) => void;
+  openaiStatus: OpenAIApiStatus | null;
+  openaiStatusLoading: boolean;
   agentModel: AgentModel;
   onAgentModel: (value: AgentModel) => void;
   agentReasoningEffort: AgentReasoningEffort;
@@ -669,7 +735,11 @@ function Lobby({
     "YOU",
     ...Array.from({ length: agentCount }, (_, index) => `A${index + 1}`),
   ];
-  const canStart = mode === "rehearsal" || Boolean(auth?.signedIn);
+  const openaiReady = Boolean(openaiApiKey.trim() || openaiStatus?.configured);
+  const canStart =
+    mode === "rehearsal" ||
+    (mode === "codex" && Boolean(auth?.signedIn)) ||
+    (mode === "openai" && openaiReady);
   return (
     <section className="lobby-view">
       <div className="lobby-heading">
@@ -724,7 +794,7 @@ function Lobby({
           </div>
 
           <div className="form-section backend-section">
-            <div className="section-label"><span>4</span><div><strong>Players’ minds</strong><small>Codex is the primary game engine.</small></div></div>
+            <div className="section-label"><span>4</span><div><strong>Players’ minds</strong><small>Choose how the village connects to its models.</small></div></div>
             <button
               type="button"
               className={`backend-choice ${mode === "codex" ? "selected" : ""}`}
@@ -734,8 +804,72 @@ function Lobby({
               <span><strong>Codex agents <em>Recommended</em></strong><small>{authLoading ? "Checking your local runtime…" : auth?.signedIn ? auth.message : "Sign in with ChatGPT—no API key needed."}</small></span>
               {auth?.signedIn ? <Check size={18} /> : mode === "codex" ? <i /> : null}
             </button>
-            {mode === "codex" && (
-              <div className="agent-config-panel" aria-label="Codex agent settings">
+            {mode === "codex" && !auth?.signedIn && (
+              <div className="connect-row">
+                <button
+                  type="button"
+                  className="connect-button"
+                  disabled={loginPending || authLoading}
+                  onClick={() => onLogin("browser")}
+                >
+                  {loginPending ? <LoaderCircle className="spin" size={16} /> : <ExternalLink size={15} />}
+                  Sign in with ChatGPT
+                </button>
+                <button type="button" className="device-link" onClick={() => onLogin("device")}>Use a device code</button>
+              </div>
+            )}
+            <button
+              type="button"
+              className={`backend-choice openai-choice ${mode === "openai" ? "selected" : ""}`}
+              onClick={() => onMode("openai")}
+            >
+              <span className="backend-icon"><KeyRound size={18} /></span>
+              <span>
+                <strong>OpenAI API agents</strong>
+                <small>
+                  {openaiStatusLoading
+                    ? "Checking the local service…"
+                    : openaiReady
+                      ? "Use your API key with the OpenAI Responses API."
+                      : "Bring an OpenAI API key instead of using Codex."}
+                </small>
+              </span>
+              {openaiReady ? <Check size={18} /> : mode === "openai" ? <i /> : null}
+            </button>
+            {mode === "openai" && (
+              <div className="api-key-panel">
+                <label className="field-label" htmlFor="openai-api-key">
+                  OpenAI API key
+                </label>
+                <input
+                  id="openai-api-key"
+                  className="text-input"
+                  type="password"
+                  value={openaiApiKey}
+                  maxLength={512}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending}
+                  onChange={(event) => onOpenAIApiKey(event.target.value)}
+                  placeholder={
+                    openaiStatus?.configured
+                      ? "Using OPENAI_API_KEY from the local service"
+                      : "sk-…"
+                  }
+                  aria-describedby="openai-api-key-note"
+                />
+                <small id="openai-api-key-note">
+                  {openaiStatus?.configured && !openaiApiKey.trim()
+                    ? "The environment key is ready. Enter another key only to override it for this game."
+                    : "Sent only to the loopback game service, kept in memory for this game, and never saved."}
+                </small>
+              </div>
+            )}
+            {mode !== "rehearsal" && (
+              <div
+                className="agent-config-panel"
+                aria-label={`${mode === "openai" ? "OpenAI API" : "Codex"} agent settings`}
+              >
                 <div className="agent-config-heading">
                   <strong>Model settings</strong>
                   <small>Applied to every agent decision in this game.</small>
@@ -774,20 +908,6 @@ function Lobby({
                     </select>
                   </label>
                 </div>
-              </div>
-            )}
-            {mode === "codex" && !auth?.signedIn && (
-              <div className="connect-row">
-                <button
-                  type="button"
-                  className="connect-button"
-                  disabled={loginPending || authLoading}
-                  onClick={() => onLogin("browser")}
-                >
-                  {loginPending ? <LoaderCircle className="spin" size={16} /> : <ExternalLink size={15} />}
-                  Sign in with ChatGPT
-                </button>
-                <button type="button" className="device-link" onClick={() => onLogin("device")}>Use a device code</button>
               </div>
             )}
             <button

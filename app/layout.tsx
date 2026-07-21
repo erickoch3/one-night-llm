@@ -31,7 +31,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s · One Night",
     },
     description:
-      "A local, Codex-powered social deduction game where every voice competes for the floor.",
+      "A local, LLM-powered social deduction game where every voice competes for the floor.",
     openGraph: {
       type: "website",
       title: "One Night — A village of voices",
