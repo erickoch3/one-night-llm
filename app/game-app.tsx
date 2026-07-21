@@ -120,7 +120,7 @@ export function GameApp() {
   const [loginChallenge, setLoginChallenge] =
     useState<CodexLoginChallenge | null>(null);
   const [loginPending, setLoginPending] = useState(false);
-  const [playerName, setPlayerName] = useState("Eric");
+  const [playerName, setPlayerName] = useState("Player");
   const [agentCount, setAgentCount] = useState(4);
   const [rolePack, setRolePack] = useState<RolePack>("classic");
   const [mode, setMode] = useState<GameMode>("codex");
