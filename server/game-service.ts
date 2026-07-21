@@ -6,6 +6,7 @@ import {
   collectVoteReadiness,
   runNightAction,
   takeSpeakingTurn,
+  type AgentModelRuntime,
   type AgentParticipant,
   type AgentTurnContext,
   type NightActionCapability,
@@ -52,6 +53,7 @@ import {
 import type {
   AdvanceDialogueRequest,
   CreateGameRequest,
+  GameMode,
   GameSnapshot,
   HumanNightActionRequest,
   NightHistoryEntryView,
@@ -63,13 +65,17 @@ import type {
 import { CodexAgentRuntime } from "./agent-runtime.ts";
 import { codexAppServer } from "./codex/client.ts";
 import { HttpError } from "./http.ts";
+import {
+  OpenAIAgentRuntime,
+  resolveOpenAIApiKey,
+} from "./openai/runtime.ts";
 
 interface GameRoom {
   id: string;
   ownerSessionId: string;
   viewerId: PlayerId;
-  mode: "codex" | "rehearsal";
-  agentRuntime: CodexAgentRuntime | null;
+  mode: GameMode;
+  agentRuntime: AgentModelRuntime | null;
   state: GameState;
   voteCallNotice: {
     announcementTurnNumber: number;
@@ -153,6 +159,10 @@ export async function createGameRoom(
       throw new HttpError(401, "Sign in with ChatGPT before inviting Codex players.");
     }
   }
+  const openaiApiKey =
+    request.mode === "openai"
+      ? resolveOpenAIApiKey(request.openaiApiKey)
+      : undefined;
   const agentCount = request.agentCount;
   if (!Number.isInteger(agentCount) || agentCount < 2 || agentCount > MAX_AGENT_COUNT) {
     throw new HttpError(400, "Choose between two and six agent players.");
@@ -176,7 +186,7 @@ export async function createGameRoom(
         id: `agent-${index + 1}`,
         name: profile.name,
         seat: index + 1,
-        model: request.mode === "codex" ? request.agentModel : "rehearsal",
+        model: request.mode === "rehearsal" ? "rehearsal" : request.agentModel,
         profileId: profile.id,
         persona: profile.tagline,
         voiceProfile: agentVoiceProfile(profile),
@@ -202,7 +212,12 @@ export async function createGameRoom(
             model: request.agentModel,
             reasoningEffort: request.agentReasoningEffort,
           })
-        : null,
+        : request.mode === "openai" && openaiApiKey
+          ? new OpenAIAgentRuntime(openaiApiKey, {
+              model: request.agentModel,
+              reasoningEffort: request.agentReasoningEffort,
+            })
+          : null,
     state,
     voteCallNotice: null,
     degradedAgents: false,
@@ -997,7 +1012,8 @@ function stableNumber(state: GameState, salt: string) {
 
 function degrade(room: GameRoom, error: unknown) {
   room.degradedAgents = true;
-  room.notice = "One or more Codex turns failed, so a deterministic understudy completed that move.";
+  const provider = room.mode === "openai" ? "OpenAI API" : "Codex";
+  room.notice = `One or more ${provider} turns failed, so a deterministic understudy completed that move.`;
   const detail = error instanceof Error ? error.message : "Unknown agent error";
   console.error(`[game-agent] ${detail.slice(0, 500)}`);
 }

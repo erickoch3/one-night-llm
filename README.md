@@ -18,10 +18,11 @@ information boundaries?** A deterministic game engine owns truth and validates
 every action; agents can influence the game only through one phase-scoped tool
 at a time.
 
-Codex is the primary agent runtime. It uses ChatGPT account sign-in through an
-installed Codex app-server, so the game does not require an API key. A seeded,
-fully offline rehearsal mode makes the complete game playable without an
-account or model calls.
+Codex is the default agent runtime. It uses ChatGPT account sign-in through an
+installed Codex app-server, so it does not require an API key. The same agents
+can instead connect directly to the OpenAI Responses API with a per-game key or
+the server's `OPENAI_API_KEY`. A seeded, fully offline rehearsal mode makes the
+complete game playable without an account or model calls.
 
 ## What makes it interesting
 
@@ -54,6 +55,8 @@ flowchart LR
 - npm
 - Optional for Codex agents: an installed ChatGPT app, Codex app, or `codex`
   CLI
+- Optional for OpenAI API agents: an OpenAI API key with access to the selected
+  model; API usage is billed to that key's project
 
 ```bash
 git clone https://github.com/erickoch3/one-night-llm.git
@@ -78,8 +81,9 @@ child processes.
 ### First game
 
 1. Enter a display name and choose two to six agent players.
-2. Choose **Codex agents** and click **Sign in with ChatGPT**, or choose
-   **Rehearsal agents** to play without signing in.
+2. Choose **Codex agents** and click **Sign in with ChatGPT**, choose
+   **OpenAI API agents** and enter a key, or choose **Rehearsal agents** to play
+   without a model connection.
 3. Select the Classic or Wild Night role pack and deal.
 4. Reveal your role, advance the narrated night one role at a time, complete any
    private action when your eyes open, then discuss and vote.
@@ -87,7 +91,9 @@ child processes.
 The first Codex game may ask you to sign in even when ChatGPT is already signed
 in elsewhere. One Night deliberately uses its own private credential directory
 rather than borrowing another app's token store. Browser login and device-code
-login are both supported. To skip sign-in completely, choose rehearsal agents.
+login are both supported. An API key entered in setup is sent only to the
+loopback service, held in memory for that game, and cleared from the form after
+the room is created. To skip model access completely, choose rehearsal agents.
 
 ## How a game works
 
@@ -170,6 +176,19 @@ unused prose response afterward. Latency-sensitive discussion decisions have
 short deadlines and skip whole-turn retries. If one times out or fails, a
 deterministic understudy completes that move so the conversation keeps moving.
 
+### OpenAI API agents
+
+OpenAI API mode sends the same phase-scoped prompt and exact function-tool
+schema directly to the Responses API. It requires exactly one tool call,
+disables parallel calls, does not enable any hosted tools or web search, and
+sets `store: false`. The game validates the returned function call through the
+same provider-neutral registry used by Codex before applying a decision.
+
+The setup field takes precedence over `OPENAI_API_KEY`. A key entered there is
+never written to disk, returned in a game snapshot, included in an agent prompt,
+or placed in the public transcript. The local room runtime holds it only in
+memory until the player leaves or the service stops.
+
 ### Rehearsal agents
 
 Rehearsal mode needs no account and makes no model calls. Seeded heuristics
@@ -178,11 +197,14 @@ useful for UI work, game-engine tests, and a quick demonstration.
 
 ## Two different kinds of identity
 
-Codex authentication and player identity are intentionally separate:
+Model authorization and player identity are intentionally separate:
 
 - **Codex/ChatGPT sign-in** authorizes the installed Codex runtime to make model
   turns. Credentials live under One Night's private application directory and
   are shared by this local service, not used as a player ID.
+- **OpenAI API key authorization** is an alternative model connection. A setup
+  key is scoped to one in-memory room; an exported `OPENAI_API_KEY` is read only
+  by the local service.
 - **Human player session** is a random opaque `one_night_player` cookie. It is
   `HttpOnly`, `SameSite=Lax`, and scoped to the local app. The entered display
   name is game presentation only; it is not an account.
@@ -201,6 +223,7 @@ available variables:
 | `NEXT_PUBLIC_GAME_API_URL`   | selected loopback game-service URL                  | Set automatically by `npm run dev`; an exported value is useful only when running the web process separately. |
 | `ONE_NIGHT_CODEX_EXECUTABLE` | auto-discovered                                     | Absolute path to a specific Codex executable.                                                                 |
 | `ONE_NIGHT_CODEX_DATA_DIR`   | `~/Library/Application Support/One Night LLM/Codex` | Private Codex config and credential root.                                                                     |
+| `OPENAI_API_KEY`             | unset                                               | Optional server-side fallback for OpenAI API games; a setup key overrides it for one room.                    |
 
 Server variables must be exported before `npm run dev`. For example:
 
@@ -233,8 +256,8 @@ vinext build, and a rendered-HTML smoke test.
 - `lib/agents/` — provider-neutral prompts, dynamic tools, validation, and turn
   orchestration
 - `lib/audio/` — procedural Web Audio cues and ambient sound
-- `server/` — loopback HTTP service, server-owned rooms, Codex app-server
-  transport, session boundary, and public snapshots
+- `server/` — loopback HTTP service, server-owned rooms, Codex app-server and
+  OpenAI Responses transports, session boundary, and public snapshots
 - `tests/` — engine, local service, and rendered-output coverage
 
 See [Architecture and trust boundaries](docs/architecture.md) for the detailed
@@ -251,7 +274,9 @@ data flow, API surface, privacy model, and multiplayer extension path.
   server. It has no database, rate limiting, CSRF tokens, or remote deployment
   configuration for the stateful game service.
 - Codex mode depends on the installed app-server protocol and a valid ChatGPT
-  account entitlement. Rehearsal mode remains available when Codex is absent.
+  account entitlement. OpenAI API mode depends on network access, key validity,
+  project quota, and selected-model access. Rehearsal mode remains available
+  when neither model connection is available.
 
 ## Contributing
 
@@ -260,18 +285,10 @@ conversation policies are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for
 the development workflow and [SECURITY.md](SECURITY.md) for private
 vulnerability reporting.
 
-## Provenance and license
-
-The TypeScript Codex runtime discovery, isolated credential-home pattern,
-JSONL app-server transport, and dynamic tool boundary were adapted from the
-author's related [Discourse](https://github.com/erickoch3/discourse) and
-[Dendra](https://github.com/erickoch3/dendra) projects, then reduced, renamed,
-and reimplemented for this TypeScript game. The same author and copyright
-holder licenses this repository, including those adaptations, under the MIT
-License.
+## License
 
 Codex is discovered from an existing installation and is not bundled. Any
 future redistribution of a Codex executable requires separate license and
 product review.
 
-The project source is available under the [MIT License](LICENSE).
+One Night LLM is open source under the [MIT License](LICENSE).

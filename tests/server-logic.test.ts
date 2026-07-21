@@ -14,6 +14,25 @@ import {
   submitHumanVote,
 } from "../server/game-service.ts";
 
+test("an OpenAI room keeps its API key out of the public game snapshot", async () => {
+  const sessionId = "00000000-0000-4000-8000-000000000003";
+  const apiKey = "test-secret-openai-api-key";
+  const view = await createGameRoom(sessionId, {
+    playerName: "Keyholder",
+    agentCount: 2,
+    mode: "openai",
+    rolePack: "classic",
+    agentModel: "gpt-5.6-luna",
+    agentReasoningEffort: "medium",
+    openaiApiKey: apiKey,
+  });
+
+  assert.equal(view.mode, "openai");
+  assert.equal(JSON.stringify(view).includes(apiKey), false);
+
+  removeGameRoom(view.gameId, sessionId);
+});
+
 test("a rehearsal room preserves secrets and completes the full game loop", async () => {
   const sessionId = "00000000-0000-4000-8000-000000000001";
   let view = await createGameRoom(sessionId, {

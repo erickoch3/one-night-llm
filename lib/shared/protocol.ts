@@ -11,7 +11,7 @@ import type {
 } from "../game/types";
 import type { AgentModel, AgentReasoningEffort } from "./agent-config";
 
-export type GameMode = "codex" | "rehearsal";
+export type GameMode = "codex" | "openai" | "rehearsal";
 
 export interface PublicPlayerView {
   id: PlayerId;
@@ -122,6 +122,8 @@ export interface CreateGameRequest {
   rolePack: "classic" | "chaos";
   agentModel: AgentModel;
   agentReasoningEffort: AgentReasoningEffort;
+  /** Used only by the local service to create this room's OpenAI runtime. */
+  openaiApiKey?: string;
 }
 
 export type HumanNightActionRequest =

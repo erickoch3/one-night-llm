@@ -87,3 +87,18 @@ test("keeps the conversation in an independent scroll region", async () => {
   assert.match(css, /\.transcript\s*\{[^}]*overscroll-behavior:\s*contain/s);
   assert.match(css, /\.conversation-panel\s*\{[^}]*height:\s*clamp\(/s);
 });
+
+test("offers an in-memory OpenAI API key alternative to Codex setup", async () => {
+  const [gameApp, protocol, runtime] = await Promise.all([
+    readFile(new URL("../app/game-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/shared/protocol.ts", import.meta.url), "utf8"),
+    readFile(new URL("../server/openai/runtime.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(protocol, /"codex"\s*\|\s*"openai"\s*\|\s*"rehearsal"/);
+  assert.match(gameApp, /OpenAI API agents/);
+  assert.match(gameApp, /type="password"/);
+  assert.match(gameApp, /kept in memory for this game/);
+  assert.match(runtime, /client\.responses\.create/);
+  assert.match(runtime, /store:\s*false/);
+});

@@ -9,6 +9,7 @@ import {
   AGENT_REASONING_EFFORTS,
 } from "../lib/shared/agent-config.ts";
 import { codexAppServer } from "./codex/client.ts";
+import { openAIApiStatus } from "./openai/runtime.ts";
 import {
   advanceDialogue,
   advanceNightCeremony,
@@ -34,6 +35,7 @@ import {
 
 const port = Number(process.env.ONE_NIGHT_API_PORT || 4318);
 const host = "127.0.0.1";
+const gameModes = ["codex", "openai", "rehearsal"] as const;
 
 const server = createServer(async (request, response) => {
   const originAllowed = applyCors(request, response);
@@ -60,6 +62,7 @@ const server = createServer(async (request, response) => {
           signedIn: auth.signedIn,
           version: auth.runtime?.version,
         },
+        openai: openAIApiStatus(),
       });
       return;
     }
@@ -89,12 +92,16 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, { ok: true });
       return;
     }
+    if (request.method === "GET" && url.pathname === "/api/openai/status") {
+      sendJson(response, 200, openAIApiStatus());
+      return;
+    }
 
     if (segments[0] === "api" && segments[1] === "games") {
       const sessionId = getOrCreatePlayerSession(request, response);
       if (request.method === "POST" && segments.length === 2) {
         const body = await readJsonBody(request);
-        const mode = body.mode === "rehearsal" ? "rehearsal" : "codex";
+        const mode = asOneOf(body.mode, "Agent connection", gameModes);
         const rolePack = body.rolePack === "chaos" ? "chaos" : "classic";
         const createRequest: CreateGameRequest = {
           playerName: asString(body.playerName, "Player name", 40),
@@ -107,6 +114,15 @@ const server = createServer(async (request, response) => {
             "Agent reasoning effort",
             AGENT_REASONING_EFFORTS,
           ),
+          ...(mode === "openai" && body.openaiApiKey !== undefined
+            ? {
+                openaiApiKey: asString(
+                  body.openaiApiKey,
+                  "OpenAI API key",
+                  512,
+                ),
+              }
+            : {}),
         };
         sendJson(response, 201, await createGameRoom(sessionId, createRequest));
         return;
