@@ -111,10 +111,7 @@ function tomlString(value: string) {
     .replaceAll("\r", "\\r");
 }
 
-/**
- * Ported from Discourse's CodexRuntime.swift. One Night keeps ChatGPT tokens in
- * an app-owned CODEX_HOME, and gives model turns an empty read-only workspace.
- */
+/** Creates the isolated credential home and read-only workspace for Codex turns. */
 export async function createCodexDirectories(): Promise<CodexRuntimeDirectories> {
   const root =
     process.env.ONE_NIGHT_CODEX_DATA_DIR?.trim() ||

@@ -285,18 +285,10 @@ conversation policies are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for
 the development workflow and [SECURITY.md](SECURITY.md) for private
 vulnerability reporting.
 
-## Provenance and license
-
-The TypeScript Codex runtime discovery, isolated credential-home pattern,
-JSONL app-server transport, and dynamic tool boundary were adapted from the
-author's related [Discourse](https://github.com/erickoch3/discourse) and
-[Dendra](https://github.com/erickoch3/dendra) projects, then reduced, renamed,
-and reimplemented for this TypeScript game. The same author and copyright
-holder licenses this repository, including those adaptations, under the MIT
-License.
+## License
 
 Codex is discovered from an existing installation and is not bundled. Any
 future redistribution of a Codex executable requires separate license and
 product review.
 
-The project source is available under the [MIT License](LICENSE).
+One Night LLM is open source under the [MIT License](LICENSE).

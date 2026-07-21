@@ -321,26 +321,7 @@ intentionally local. A public deployment would need a durable server design,
 server-side secret storage, and the multiplayer security work above; deploying
 only the static/web half would not produce a working game.
 
-## Provenance record
-
-The Codex integration follows patterns from the sibling Discourse repository:
-
-- installed runtime discovery and isolated `CODEX_HOME` from
-  `discourse-macos/DiscourseMac/AI/Codex/CodexRuntime.swift`;
-- account/login and JSONL app-server transport from
-  `CodexAppServerClient.swift` and `CodexModels.swift`; and
-- exact-schema, instance-scoped dynamic tools from `Tools/ToolRegistry.swift`.
-
-This implementation is rewritten in TypeScript and narrowed to a no-shell,
-no-network game-agent boundary. It does not copy Discourse UI, app identifiers,
-assets, entitlements, databases, or unrelated agent tools.
-
-Discourse's own provenance record says those patterns were adapted from Dendra
-at audited commit `3e8184d`. Dendra displayed an MIT badge at that point but
-did not contain a `LICENSE` file, and its README license section was still a
-placeholder. Resolve that upstream license ambiguity, and choose and add a
-license for this repository, before external distribution. This record does
-not grant a license.
+## Codex runtime distribution
 
 The project discovers an already installed Codex executable rather than
 bundling it. Redistribution of Codex itself is outside this repository's
